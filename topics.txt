@@ -1,0 +1,7 @@
+# По одной теме на строку. Конвейер берёт по одной новой теме за запуск, сверху вниз.
+# Темы, которые уже были в очереди, повторно не добавляются.
+Turn meeting recordings into action items automatically with Claude and a webhook
+Build a daily competitor price tracker with a scheduled script and Supabase
+Auto-generate a weekly customer feedback report from support tickets with Claude
+Classify and route inbound sales leads with Claude before they reach your CRM
+Extract structured data from PDF invoices with Claude and store it in Postgres
