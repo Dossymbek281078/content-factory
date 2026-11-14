@@ -72,13 +72,14 @@ def cmd_run(args) -> int:
     db = store.connect()
     sync_topics(db)
     failed = 0
-    for row in store.by_status(db, "queued", args.limit):
+    for row in store.runnable(db, args.limit):
         print(f"[{row['id']}] {row['topic']}", flush=True)
         try:
             script, final = render(row, args.dry_run)
         except Exception as error:  # один сбойный ролик не должен останавливать очередь
-            store.update(db, row["id"], status="failed", error=str(error))
-            print(f"  ОШИБКА: {error}", file=sys.stderr)
+            attempts = row["attempts"] + 1
+            store.update(db, row["id"], status="failed", error=str(error), attempts=attempts)
+            print(f"  ОШИБКА (попытка {attempts} из {store.MAX_ATTEMPTS}): {error}", file=sys.stderr)
             failed += 1
             continue
         store.update(db, row["id"], status="rendered", script_json=script.model_dump_json(),
@@ -122,7 +123,7 @@ def cmd_list(args) -> int:
 def cmd_retry(args) -> int:
     db = store.connect()
     for row in store.by_status(db, "failed"):
-        store.update(db, row["id"], status="queued", error=None)
+        store.update(db, row["id"], status="queued", error=None, attempts=0)
         print(f"[{row['id']}] возвращён в очередь")
     return 0
 
