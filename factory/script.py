@@ -109,18 +109,26 @@ response format) or a tool defined with strict: true, then still validate the re
 arguments always match the schema unless strict mode or structured outputs are used."""
 
 # Совет, который по документации выше даёт 400 на текущих моделях. Сценарий с ним не собирается.
+# Слово «temperature» само по себе не ошибка (ролик про термостат), ошибка — совет его выставить;
+# tool_choice auto и none API принимает.
+SAMPLING = r"(temperature|top[_ -]p|top[_ -]k)"
 API_ERROR = re.compile("|".join([
-    r"\b(temperature|top[_ ]p|top[_ ]k)\b",
-    r"\btool[_ ]choice\b",
-    r"\bforc\w*\s+(\w+\s+){0,3}tool\b",
-    r"\btool\s+(\w+\s+){0,2}forced\b",
+    r"\b(set|setting|sets|lower|lowering|use|using|pass|passing|fix|fixing)\s+(the\s+|a\s+|your\s+)?" + SAMPLING + r"\b",
+    r"\b" + SAMPLING + r"\s+(to|of|at|=|:)\s*(zero|0)",
+    r"\btool[_ -]choice\b(?!\W*(\w+\W+){0,2}(auto|none)\b)",
+    r"\bforc\w*\s+(a|an|the|that|this|one|your)\s+(specific\s+|single\s+|named\s+)?tool\b",
+    r"\bforc\w*\s+(the\s+)?(model|claude)\s+to\s+(call|use)\b",
+    r"\bforced\s+(\w+\s+)?tool\b",
 ]), re.IGNORECASE)
 
 # Предметы, на которых модель картинок рисует мусорные буквы (ролик 5: кадры 1, 2, 4, 5, 6).
 TEXTY_VISUAL = re.compile(
     r"\b(paper|papers|document|documents|invoice|invoices|receipt|receipts|book|books|page|pages|"
     r"screen|screens|monitor|monitors|code|spreadsheet|spreadsheets|chart|charts|dashboard|dashboards|"
-    r"sign|signs|label|labels|database|newspaper|whiteboard)\b", re.IGNORECASE)
+    r"sign|signs|label|labels|database|newspaper|whiteboard|notebook|notebooks|poster|posters|"
+    r"terminal|ledger|tablet|phone)\b", re.IGNORECASE)
+# «no text, no screens», «without paper» — запрет в подсказке, а не предмет в кадре.
+NEGATED = re.compile(r"\b(no|without|not|never|avoid)\b[^,.;]*$", re.IGNORECASE)
 
 
 def api_errors(video: VideoScript) -> list[str]:
@@ -130,8 +138,13 @@ def api_errors(video: VideoScript) -> list[str]:
 
 
 def texty_visuals(video: VideoScript) -> list[str]:
-    return [f"сцена {i}: {match.group(0)}" for i, scene in enumerate(video.scenes, 1)
-            for match in [TEXTY_VISUAL.search(scene.visual_prompt)] if match]
+    found = []
+    for i, scene in enumerate(video.scenes, 1):
+        for match in TEXTY_VISUAL.finditer(scene.visual_prompt):
+            if not NEGATED.search(scene.visual_prompt[:match.start()]):
+                found.append(f"сцена {i}: {match.group(0)}")
+                break
+    return found
 
 
 def overclaims(video: VideoScript) -> list[str]:

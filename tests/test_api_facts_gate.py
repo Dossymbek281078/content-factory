@@ -47,8 +47,23 @@ class ApiFactsGateTest(unittest.TestCase):
             with self.subTest(text=text), self.assertRaises(RuntimeError):
                 script.check_promises(make(text))
 
+    def test_more_wrong_variants_stop_build(self):
+        for text in ["Use a temperature of 0.", "Pass tool-choice with the tool name.",
+                     "Force the model to call record invoice.", "Lower the temperature for consistency."]:
+            with self.subTest(text=text), self.assertRaises(RuntimeError):
+                script.check_promises(make(text))
+
     def test_normal_tool_use_passes(self):
-        script.check_promises(make("Define one tool with strict true and validate the result in code."))
+        for text in ["Define one tool with strict true and validate the result in code.",
+                     "The sensor reports room temperature every minute.",
+                     "Leave tool_choice on auto.", "Set tool_choice to none for the summary call.",
+                     "The schema forces the team to agree on field names."]:
+            with self.subTest(text=text):
+                script.check_promises(make(text))
+
+    def test_negated_objects_in_visual_pass(self):
+        script.check_promises(make("Parse the reply in code.",
+                                   "A brass desk lamp on an empty oak desk, warm light, no text, no screens, no paper"))
 
     def test_texty_visuals_from_video5_stop_build(self):
         for visual in VIDEO5_TEXTY:
