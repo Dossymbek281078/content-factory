@@ -27,7 +27,8 @@ cinematic style. No on-screen text, logos, or real people's likenesses.
 # ролик не должен на неё ссылаться.
 ENDING_WITH_LINK = "End the last scene with a single plain call to action pointing to the link in the description."
 ENDING_WITHOUT_LINK = ("End the last scene with a one-sentence recap of the result. Do not mention a link, "
-                       "a description, a template or a download: none is provided with this video.")
+                       "a template, a download or anything to be found below the video, anywhere in the title, "
+                       "the description or the narration: none is provided with this video.")
 
 
 def system_prompt() -> str:
