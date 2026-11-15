@@ -1,5 +1,7 @@
 """Сценарий: тема -> структурированный сценарий со сценами (Claude)."""
 
+import re
+
 import anthropic
 
 from . import config
@@ -29,6 +31,18 @@ ENDING_WITH_LINK = "End the last scene with a single plain call to action pointi
 ENDING_WITHOUT_LINK = ("End the last scene with a one-sentence recap of the result. Do not mention a link, "
                        "a template, a download or anything to be found below the video, anywhere in the title, "
                        "the description or the narration: none is provided with this video.")
+
+
+# Признаки обещания чего-то «под видео». Ловят и сценарии из кэша, написанные до правила выше.
+PROMISE = re.compile(r"\blinks?\b|\bdescription below\b|\bin the description\b|\bbelow (the|this) video\b"
+                     r"|\bdownload\b|\b(grab|get) the (template|code|workflow)\b|\b(template|code) below\b",
+                     re.IGNORECASE)
+
+
+def promised_links(video: VideoScript) -> list[str]:
+    """Фразы сценария, которые обещают ссылку, шаблон или загрузку."""
+    texts = [video.title, video.description, *(scene.narration for scene in video.scenes)]
+    return [match.group(0) for text in texts for match in PROMISE.finditer(text)]
 
 
 def system_prompt() -> str:

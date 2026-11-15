@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import assemble, config, media, store
 from .models import VideoScript
-from .script import generate_script, mock_script
+from .script import generate_script, mock_script, promised_links
 
 
 def render(row, dry_run: bool) -> tuple[VideoScript, Path]:
@@ -63,7 +63,13 @@ def sync_topics(db) -> None:
 def upload(db, row) -> None:
     from .youtube import upload_private
 
-    youtube_id = upload_private(Path(row["video_path"]), VideoScript.model_validate_json(row["script_json"]))
+    script = VideoScript.model_validate_json(row["script_json"])
+    promises = promised_links(script)
+    if promises and not config.PRODUCT_URL:
+        # Ссылки в описании не будет (см. youtube.py), а ролик её обещает — скорее всего сценарий
+        # из кэша, написанный до правила «без ссылки». Не загружаем: поправить и собрать заново.
+        raise RuntimeError(f"ролик {row['id']} обещает ссылку, а PRODUCT_URL не задан: {', '.join(promises)}")
+    youtube_id = upload_private(Path(row["video_path"]), script)
     store.update(db, row["id"], status="uploaded", youtube_id=youtube_id)
     print(f"  загружен приватным: https://studio.youtube.com/video/{youtube_id}/edit")
 
