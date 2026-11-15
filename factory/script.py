@@ -25,11 +25,16 @@ Nobody has run this automation, so present it as a design and the steps to build
 speed, accuracy or guarantees for it ("runs in seconds", "never misses", "posts itself", "verified report", \
 "numbers are never invented"); say instead what the code does and what to measure when the viewer runs it.
 
+{api_facts}
+
 Aim for 8 to 12 scenes of 2 to 4 sentences each, about 4 to 6 minutes in total.
 
 Each scene needs a visual prompt for an image model. Describe one concrete, distinct shot \
 per scene (a different subject, angle or setting each time) in a consistent clean, modern, \
-cinematic style. No on-screen text, logos, or real people's likenesses.
+cinematic style. No on-screen text, logos, or real people's likenesses. Image models draw \
+fake letters on anything that normally carries writing, so never show paper, documents, invoices, \
+receipts, books, screens, monitors, code, spreadsheets, charts, dashboards, signs, labels or database \
+tables: use abstract shapes, light, objects and places instead.
 
 {ending}"""
 
@@ -84,6 +89,51 @@ OVERCLAIM = re.compile("|".join([
 ]), re.IGNORECASE)
 
 
+# Ограничения Claude API, сверенные по документации 15.11.2026 (сверка ролика 5):
+# - https://platform.claude.com/docs/en/models/sonnet-5-5/overview — «Setting `temperature`, `top_p`,
+#   or `top_k` returns a 400 error.»
+# - https://platform.claude.com/docs/en/api/errors — Opus 5.5, Sonnet 5.5, Fable 5.2/5.1, Mythos 5.2/5.1
+#   «don't support forced tool use»: tool_choice any/tool → 400; auto и none принимаются.
+# - https://platform.claude.com/docs/en/agents-and-tools/tool-use/strict-tool-use — без strict «Claude might
+#   return incompatible types ... or omit required fields»; strict: true гарантирует соответствие схеме.
+# - https://platform.claude.com/docs/en/build-with-claude/structured-outputs — «guarantee schema-compliant
+#   responses»; в supportedModels есть claude-opus-5-5 и claude-sonnet-5-5.
+# Пересматривать при выходе новых моделей.
+API_FACTS = """When a video uses the Claude API, follow these facts from Anthropic's documentation:
+- Do not tell viewers to set temperature, top_p or top_k: on Claude Sonnet 5.5 setting any of them returns \
+a 400 error.
+- Do not tell viewers to force a tool with tool_choice ("any" or a named tool): Claude Opus 5.5, Sonnet 5.5 \
+and Fable 5.2 reject it with a 400 error. For structured data, use structured outputs (a JSON schema \
+response format) or a tool defined with strict: true, then still validate the result in code.
+- Without strict mode a tool call can have wrong types or missing required fields; do not say the \
+arguments always match the schema unless strict mode or structured outputs are used."""
+
+# Совет, который по документации выше даёт 400 на текущих моделях. Сценарий с ним не собирается.
+API_ERROR = re.compile("|".join([
+    r"\b(temperature|top[_ ]p|top[_ ]k)\b",
+    r"\btool[_ ]choice\b",
+    r"\bforc\w*\s+(\w+\s+){0,3}tool\b",
+    r"\btool\s+(\w+\s+){0,2}forced\b",
+]), re.IGNORECASE)
+
+# Предметы, на которых модель картинок рисует мусорные буквы (ролик 5: кадры 1, 2, 4, 5, 6).
+TEXTY_VISUAL = re.compile(
+    r"\b(paper|papers|document|documents|invoice|invoices|receipt|receipts|book|books|page|pages|"
+    r"screen|screens|monitor|monitors|code|spreadsheet|spreadsheets|chart|charts|dashboard|dashboards|"
+    r"sign|signs|label|labels|database|newspaper|whiteboard)\b", re.IGNORECASE)
+
+
+def api_errors(video: VideoScript) -> list[str]:
+    texts = [video.title, video.description, video.thumbnail_text,
+             *(scene.narration for scene in video.scenes)]
+    return [match.group(0) for text in texts for match in API_ERROR.finditer(text)]
+
+
+def texty_visuals(video: VideoScript) -> list[str]:
+    return [f"сцена {i}: {match.group(0)}" for i, scene in enumerate(video.scenes, 1)
+            for match in [TEXTY_VISUAL.search(scene.visual_prompt)] if match]
+
+
 def overclaims(video: VideoScript) -> list[str]:
     texts = [video.title, video.description, video.thumbnail_text, *video.tags,
              *(scene.narration for scene in video.scenes)]
@@ -104,6 +154,12 @@ def check_promises(video: VideoScript) -> None:
     claims = overclaims(video)
     if claims:
         raise RuntimeError(f"сценарий утверждает непроверенный результат: {', '.join(claims)}")
+    errors = api_errors(video)
+    if errors:
+        raise RuntimeError(f"сценарий советует то, что Claude API отклоняет: {', '.join(errors)}")
+    texty = texty_visuals(video)
+    if texty:
+        raise RuntimeError(f"картинка сцены нарисует мусорный текст: {', '.join(texty)}")
     promises = promised_links(video)
     if not promises:
         return
@@ -115,7 +171,7 @@ def check_promises(video: VideoScript) -> None:
 
 def system_prompt() -> str:
     ending = ENDING_WITH_LINK if config.PRODUCT_URL else ENDING_WITHOUT_LINK
-    return SYSTEM.format(channel=config.CHANNEL_NAME, ending=ending)
+    return SYSTEM.format(channel=config.CHANNEL_NAME, ending=ending, api_facts=API_FACTS)
 
 
 def generate_script(topic: str) -> VideoScript:
