@@ -41,6 +41,28 @@ class StaleScriptTest(unittest.TestCase):
     def test_plain_script_passes(self):
         self.assertEqual(script.promised_links(video("Now every meeting ends with a task list.")), [])
 
+    def test_ordinary_automation_steps_pass(self):
+        for line in ("Link the Slack node to Gmail.", "Use an HTTP node to download the PDF.",
+                     "Extract all links from the page.", "Zapier links your apps.",
+                     "Download the attachment, then comment the code.", "Copy the workflow ID from the URL.",
+                     "Now get the workflow running on a schedule."):
+            with self.subTest(line=line):
+                self.assertEqual(script.promised_links(video(line)), [])
+
+    def test_varied_promises_are_caught(self):
+        for line in ("Grab the free template.", "Get my workflow and try it.", "It's in the video description.",
+                     "Check the description box.", "Details down below.", "See below for the setup.",
+                     "It's in the show notes.", "Find it in the pinned comment.", "Link in bio.",
+                     "The template is free.", "Comment TEMPLATE and I'll send it.", "The link is below.",
+                     "Everything is under the video.", "Download my blueprint."):
+            with self.subTest(line=line):
+                self.assertTrue(script.promised_links(video(line)))
+
+    def test_tags_and_thumbnail_are_scanned(self):
+        v = video("Done.")
+        v.thumbnail_text = "FREE TEMPLATE BELOW"
+        self.assertTrue(script.promised_links(v))
+
     def test_upload_refuses_stale_promise_without_product_url(self):
         from factory import __main__ as cli
         row = {"id": 7, "video_path": "final.mp4",

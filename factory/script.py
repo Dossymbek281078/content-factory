@@ -34,15 +34,29 @@ ENDING_WITHOUT_LINK = ("End the last scene with a one-sentence recap of the resu
 
 
 # Признаки обещания чего-то «под видео». Ловят и сценарии из кэша, написанные до правила выше.
-PROMISE = re.compile(r"\blinks?\b|\bdescription below\b|\bin the description\b|\bbelow (the|this) video\b"
-                     r"|\bdownload\b|\b(grab|get) the (template|code|workflow)\b|\b(template|code) below\b",
-                     re.IGNORECASE)
+# Ищутся фразы-указатели «куда-то за пределы ролика», а не отдельные слова: «link the nodes» и
+# «download the PDF» — обычные шаги автоматизации, их пропускаем.
+GIVEAWAY = r"(template|workflow|blueprint|code|json|prompt|guide|cheat ?sheet|file)s?"
+PROMISE = re.compile("|".join([
+    r"\blinks?\s+(is\s+|are\s+)?(in|below|down)\b",
+    r"\b(in|under|check|see)\s+the\s+(video\s+)?description\b",
+    r"\bdescription\s+(box|below)\b",
+    r"\b(down|see|details|linked|listed|link|links|" + GIVEAWAY + r")\s+below\b",
+    r"\b(below|under)\s+(the|this)\s+video\b",
+    r"\b(show\s+notes|pinned\s+comment|first\s+comment)\b",
+    r"\b(grab|get|download|steal)\s+(the|my|our|this|a)\s+(free\s+)?" + GIVEAWAY
+    + r"\b(?!\s+(running|working|started|to\b))",
+    r"\b" + GIVEAWAY + r"\s+(is|are)\s+(free|linked|below|available)\b",
+]), re.IGNORECASE)
+COMMENT_KEYWORD = re.compile(r"\b[Cc]omment\s+[\"“']?[A-Z]{3,}\b")  # «Comment TEMPLATE and I'll send it»
 
 
 def promised_links(video: VideoScript) -> list[str]:
-    """Фразы сценария, которые обещают ссылку, шаблон или загрузку."""
-    texts = [video.title, video.description, *(scene.narration for scene in video.scenes)]
-    return [match.group(0) for text in texts for match in PROMISE.finditer(text)]
+    """Фразы ролика (всё, что видит зритель), которые обещают ссылку, шаблон или загрузку."""
+    texts = [video.title, video.description, video.thumbnail_text, *video.tags,
+             *(scene.narration for scene in video.scenes)]
+    return [match.group(0) for text in texts for pattern in (PROMISE, COMMENT_KEYWORD)
+            for match in pattern.finditer(text)]
 
 
 def system_prompt() -> str:
