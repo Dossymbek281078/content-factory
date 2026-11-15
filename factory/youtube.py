@@ -10,6 +10,17 @@ from . import config
 from .models import VideoScript
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+# Зритель флага containsSyntheticMedia в описании не видит, поэтому пометка ИИ — ещё и текстом.
+AI_LABEL = "Narration and visuals are AI-generated."
+
+
+def build_description(script: VideoScript) -> str:
+    description = script.description.rstrip()
+    if config.PRODUCT_URL:
+        description = f"Template and code: {config.PRODUCT_URL}\n\n{description}"
+    if AI_LABEL not in description:
+        description = f"{description}\n\n{AI_LABEL}"
+    return description
 
 
 def upload_private(video: Path, script: VideoScript) -> str:
@@ -21,9 +32,7 @@ def upload_private(video: Path, script: VideoScript) -> str:
         token_uri="https://oauth2.googleapis.com/token",
         scopes=SCOPES,
     )
-    description = script.description
-    if config.PRODUCT_URL:
-        description = f"Template and code: {config.PRODUCT_URL}\n\n{description}"
+    description = build_description(script)
 
     request = build("youtube", "v3", credentials=credentials).videos().insert(
         part="snippet,status",
