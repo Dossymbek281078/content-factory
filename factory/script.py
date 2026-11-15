@@ -1,5 +1,6 @@
 """Сценарий: тема -> структурированный сценарий со сценами (Claude)."""
 
+import http.client
 import re
 import urllib.request
 
@@ -64,7 +65,7 @@ def page_is_live(url: str) -> bool:
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 content-factory-check"}), timeout=15) as response:
             return response.status == 200
-    except (OSError, ValueError):
+    except (OSError, ValueError, http.client.HTTPException):  # оборванный ответ = страница не жива
         return False
 
 
