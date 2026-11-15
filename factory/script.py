@@ -1,6 +1,7 @@
 """Сценарий: тема -> структурированный сценарий со сценами (Claude)."""
 
 import re
+import urllib.request
 
 import anthropic
 
@@ -59,6 +60,26 @@ def promised_links(video: VideoScript) -> list[str]:
             for match in pattern.finditer(text)]
 
 
+def page_is_live(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 content-factory-check"}), timeout=15) as response:
+            return response.status == 200
+    except (OSError, ValueError):
+        return False
+
+
+def check_promises(video: VideoScript) -> None:
+    """Сценарий, обещающий ссылку, шаблон или код, собирается, только если в описании будет
+    ссылка (PRODUCT_URL) и страница по ней жива. Иначе ролик встанет уже оплаченным."""
+    promises = promised_links(video)
+    if not promises:
+        return
+    if not config.PRODUCT_URL:
+        raise RuntimeError(f"сценарий обещает ссылку, а PRODUCT_URL не задан: {', '.join(promises)}")
+    if not page_is_live(config.PRODUCT_URL):
+        raise RuntimeError(f"сценарий обещает ссылку, а {config.PRODUCT_URL} не отвечает 200: {', '.join(promises)}")
+
+
 def system_prompt() -> str:
     ending = ENDING_WITH_LINK if config.PRODUCT_URL else ENDING_WITHOUT_LINK
     return SYSTEM.format(channel=config.CHANNEL_NAME, ending=ending)
@@ -87,7 +108,7 @@ def mock_script(topic: str) -> VideoScript:
         f"This video shows how to build {topic} from start to finish.",
         "First we look at the manual process and where the time goes every week.",
         "Then we connect three tools so that the whole thing runs on a schedule.",
-        "Here is the result, what it costs to run, and where to get the template.",
+        "Here is the result, what it costs to run, and what to try next.",
     ]
     return VideoScript(
         title=f"[DRY RUN] {topic}"[:70],

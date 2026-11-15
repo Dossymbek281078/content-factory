@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import assemble, config, media, store
 from .models import VideoScript
-from .script import generate_script, mock_script, promised_links
+from .script import check_promises, generate_script, mock_script, promised_links
 
 
 def render(row, dry_run: bool) -> tuple[VideoScript, Path]:
@@ -27,6 +27,15 @@ def render(row, dry_run: bool) -> tuple[VideoScript, Path]:
     else:
         script = mock_script(row["topic"]) if dry_run else generate_script(row["topic"])
         script_file.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+
+    try:
+        check_promises(script)
+    except RuntimeError:
+        # Сцены ещё не оплачены — сценарий выбрасываем, следующая попытка напишет новый.
+        # Если оплачены, оставляем: новый сценарий разошёлся бы с готовой озвучкой.
+        if not any(work.glob("scene_*")):
+            script_file.unlink()
+        raise
 
     clips, durations = [], []
     for i, scene in enumerate(script.scenes):
