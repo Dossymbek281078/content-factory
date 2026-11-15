@@ -69,14 +69,17 @@ def promised_links(video: VideoScript) -> list[str]:
 
 # Утверждения о результате автоматизации, которую никто не запускал (сверка роликов 3 и 4 15.11).
 OVERCLAIM = re.compile("|".join([
-    r"\bnever\s+(be\s+)?(invented|hallucinat\w*|miss(es)?|fails?|makes?\s+up)\b",
-    r"\bverified,?\s+(and\s+)?(cited\s+)?(\w+\s+)?(report|numbers|data|output|results?)\b",
-    r"\b(posts|runs|updates)\s+itself\b",
-    r"\bguarantee[sd]?\b",
-    r"\b100\s?(%|percent)",
-    r"\bzero\s+(errors|mistakes|hallucinations)\b",
+    # «to never make up» — указание модели, а не утверждение о результате.
+    r"(?<!\bto\s)\bnever\s+(be\s+)?(invent\w*|hallucinat\w*|miss\w*|fail\w*|forget\w*|drop\w*|break\w*"
+    r"|makes?\s+up|made\s+up)\b",
+    r"\bverified,?\s+(and\s+)?cited\b|\bverified\s+(\w+\s+)?(report|numbers|data|output)\b",
+    r"\b(posts|runs|updates|sends|writes|fixes|maintains)\s+itself\b",
+    r"\bguaranteed\b",
+    r"\b100\s?(%|percent\b)\s*(accurate|reliable|correct|automated|of\s+the\s+time)",
+    r"\bzero\s+(errors|mistakes|hallucinations)\b|\berror-free\b|\bflawless(ly)?\b",
     r"\b(always|perfectly|fully)\s+accurate\b",
-    r"\bin\s+(seconds|milliseconds)\b",
+    r"\b(routed|processed|classified|delivered|ready|done|arrives?|lands?|shows?\s+up)(\s+by\s+\w+)?\s+(in|within)\s+"
+    r"(a\s+few\s+)?(seconds|minutes)\b|\binstantly\b",
     r"\bstays?\s+clean\b",
 ]), re.IGNORECASE)
 
