@@ -21,7 +21,18 @@ Each scene needs a visual prompt for an image model. Describe one concrete, dist
 per scene (a different subject, angle or setting each time) in a consistent clean, modern, \
 cinematic style. No on-screen text, logos, or real people's likenesses.
 
-End the last scene with a single plain call to action pointing to the link in the description."""
+{ending}"""
+
+# Ссылка попадает в описание только при заданном PRODUCT_URL (см. youtube.py), поэтому без него
+# ролик не должен на неё ссылаться.
+ENDING_WITH_LINK = "End the last scene with a single plain call to action pointing to the link in the description."
+ENDING_WITHOUT_LINK = ("End the last scene with a one-sentence recap of the result. Do not mention a link, "
+                       "a description, a template or a download: none is provided with this video.")
+
+
+def system_prompt() -> str:
+    ending = ENDING_WITH_LINK if config.PRODUCT_URL else ENDING_WITHOUT_LINK
+    return SYSTEM.format(channel=config.CHANNEL_NAME, ending=ending)
 
 
 def generate_script(topic: str) -> VideoScript:
@@ -30,7 +41,7 @@ def generate_script(topic: str) -> VideoScript:
         model="claude-opus-5-5",
         max_tokens=16000,
         output_config={"effort": "high"},
-        system=SYSTEM.format(channel=config.CHANNEL_NAME),
+        system=system_prompt(),
         messages=[{"role": "user", "content": f"Write the script for this video topic:\n\n{topic}"}],
         output_format=VideoScript,
     )
