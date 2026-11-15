@@ -19,7 +19,13 @@ invent benchmarks, revenue figures or customer stories: if a number is not given
 topic, describe the mechanism instead of quoting a figure.
 
 Write narration to be spoken aloud: short sentences, no markdown, no emoji, no stage \
-directions. Aim for 8 to 12 scenes of 2 to 4 sentences each, about 4 to 6 minutes in total.
+directions.
+
+Nobody has run this automation, so present it as a design and the steps to build it. Do not claim results, \
+speed, accuracy or guarantees for it ("runs in seconds", "never misses", "posts itself", "verified report", \
+"numbers are never invented"); say instead what the code does and what to measure when the viewer runs it.
+
+Aim for 8 to 12 scenes of 2 to 4 sentences each, about 4 to 6 minutes in total.
 
 Each scene needs a visual prompt for an image model. Describe one concrete, distinct shot \
 per scene (a different subject, angle or setting each time) in a consistent clean, modern, \
@@ -61,6 +67,26 @@ def promised_links(video: VideoScript) -> list[str]:
             for match in pattern.finditer(text)]
 
 
+# Утверждения о результате автоматизации, которую никто не запускал (сверка роликов 3 и 4 15.11).
+OVERCLAIM = re.compile("|".join([
+    r"\bnever\s+(be\s+)?(invented|hallucinat\w*|miss(es)?|fails?|makes?\s+up)\b",
+    r"\bverified,?\s+(and\s+)?(cited\s+)?(\w+\s+)?(report|numbers|data|output|results?)\b",
+    r"\b(posts|runs|updates)\s+itself\b",
+    r"\bguarantee[sd]?\b",
+    r"\b100\s?(%|percent)",
+    r"\bzero\s+(errors|mistakes|hallucinations)\b",
+    r"\b(always|perfectly|fully)\s+accurate\b",
+    r"\bin\s+(seconds|milliseconds)\b",
+    r"\bstays?\s+clean\b",
+]), re.IGNORECASE)
+
+
+def overclaims(video: VideoScript) -> list[str]:
+    texts = [video.title, video.description, video.thumbnail_text, *video.tags,
+             *(scene.narration for scene in video.scenes)]
+    return [match.group(0) for text in texts for match in OVERCLAIM.finditer(text)]
+
+
 def page_is_live(url: str) -> bool:
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 content-factory-check"}), timeout=15) as response:
@@ -72,6 +98,9 @@ def page_is_live(url: str) -> bool:
 def check_promises(video: VideoScript) -> None:
     """Сценарий, обещающий ссылку, шаблон или код, собирается, только если в описании будет
     ссылка (PRODUCT_URL) и страница по ней жива. Иначе ролик встанет уже оплаченным."""
+    claims = overclaims(video)
+    if claims:
+        raise RuntimeError(f"сценарий утверждает непроверенный результат: {', '.join(claims)}")
     promises = promised_links(video)
     if not promises:
         return

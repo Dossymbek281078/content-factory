@@ -64,6 +64,17 @@ class PromiseGateTest(unittest.TestCase):
         with mock.patch.object(config, "PRODUCT_URL", ""):
             script.check_promises(plain)
 
+    def test_new_script_is_printed_to_log(self):
+        # Текст ролика читается через railway logs, без запуска контейнера ради ssh.
+        import contextlib, io
+        out = io.StringIO()
+        with mock.patch.object(config, "PRODUCT_URL", ""), \
+                mock.patch.object(cli, "generate_script", return_value=PROMISING), contextlib.redirect_stdout(out):
+            with self.assertRaises(RuntimeError):
+                cli.render(self.row, dry_run=False)
+        self.assertIn('"title": "Meetings to tasks"', out.getvalue())
+        self.assertIn("The code template is linked below.", out.getvalue())
+
     def test_dry_run_mock_script_promises_nothing(self):
         self.assertEqual(script.promised_links(script.mock_script("x")), [])
 

@@ -27,6 +27,9 @@ def render(row, dry_run: bool) -> tuple[VideoScript, Path]:
     else:
         script = mock_script(row["topic"]) if dry_run else generate_script(row["topic"])
         script_file.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+        # Весь текст ролика — в лог: сверять его можно по railway logs, не поднимая контейнер.
+        # В сценарии нет ключей и переменных окружения, только то, что увидит зритель.
+        print("  сценарий:\n" + script.model_dump_json(indent=2), flush=True)
 
     try:
         check_promises(script)
