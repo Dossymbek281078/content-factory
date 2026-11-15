@@ -165,6 +165,12 @@ def main() -> int:
     p = sub.add_parser("upload", help="загрузить готовый ролик на YouTube приватным")
     p.add_argument("id", type=int); p.set_defaults(fn=cmd_upload)
     args = parser.parse_args()
+    foreign = config.foreign_railway_project()
+    if foreign and args.fn in (cmd_run, cmd_upload):
+        # Код 0: иначе restart ON_FAILURE перезапустит службу ещё раз.
+        print(f"ПРЕДУПРЕЖДЕНИЕ: проект Railway «{foreign}» не боевой — сборка и загрузка пропущены.",
+              file=sys.stderr, flush=True)
+        return 0
     return args.fn(args)
 
 
