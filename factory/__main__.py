@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import assemble, config, media, store
 from .models import VideoScript
-from .script import generate_script, mock_script
+from .script import generate_script, mock_script, promised_links
 
 
 def render(row, dry_run: bool) -> tuple[VideoScript, Path]:
@@ -63,7 +63,13 @@ def sync_topics(db) -> None:
 def upload(db, row) -> None:
     from .youtube import upload_private
 
-    youtube_id = upload_private(Path(row["video_path"]), VideoScript.model_validate_json(row["script_json"]))
+    script = VideoScript.model_validate_json(row["script_json"])
+    promises = promised_links(script)
+    if promises and not config.PRODUCT_URL:
+        # Ссылки в описании не будет (см. youtube.py), а ролик её обещает — скорее всего сценарий
+        # из кэша, написанный до правила «без ссылки». Не загружаем: поправить и собрать заново.
+        raise RuntimeError(f"ролик {row['id']} обещает ссылку, а PRODUCT_URL не задан: {', '.join(promises)}")
+    youtube_id = upload_private(Path(row["video_path"]), script)
     store.update(db, row["id"], status="uploaded", youtube_id=youtube_id)
     print(f"  загружен приватным: https://studio.youtube.com/video/{youtube_id}/edit")
 
@@ -72,13 +78,15 @@ def cmd_run(args) -> int:
     db = store.connect()
     sync_topics(db)
     failed = 0
-    for row in store.by_status(db, "queued", args.limit):
+    for row in store.runnable(db, args.limit):
         print(f"[{row['id']}] {row['topic']}", flush=True)
+        # Записывается до сборки: если контейнер убьют посреди неё, попытка всё равно учтена.
+        attempts = store.claim_attempt(db, row["id"])
         try:
             script, final = render(row, args.dry_run)
         except Exception as error:  # один сбойный ролик не должен останавливать очередь
             store.update(db, row["id"], status="failed", error=str(error))
-            print(f"  ОШИБКА: {error}", file=sys.stderr)
+            print(f"  ОШИБКА (попытка {attempts} из {store.MAX_ATTEMPTS}): {error}", file=sys.stderr)
             failed += 1
             continue
         store.update(db, row["id"], status="rendered", script_json=script.model_dump_json(),
@@ -115,14 +123,18 @@ def cmd_add(args) -> int:
 def cmd_list(args) -> int:
     for row in store.everything(store.connect()):
         extra = row["youtube_id"] or row["error"] or row["video_path"] or ""
-        print(f"{row['id']:>4}  {row['status']:<9} {row['topic'][:60]:<60} {extra[:80]}")
+        if row["status"] in ("queued", "failed") and row["attempts"]:
+            stop = " — больше не запускается, см. retry" if row["attempts"] >= store.MAX_ATTEMPTS else ""
+            extra = "; ".join(filter(None, [f"попыток {row['attempts']}/{store.MAX_ATTEMPTS}{stop}", extra]))
+        print(f"{row['id']:>4}  {row['status']:<9} {row['topic'][:60]:<60} {extra[:120]}")
     return 0
 
 
 def cmd_retry(args) -> int:
     db = store.connect()
-    for row in store.by_status(db, "failed"):
-        store.update(db, row["id"], status="queued", error=None)
+    stuck = [row for row in store.by_status(db, "queued") if row["attempts"] >= store.MAX_ATTEMPTS]
+    for row in store.by_status(db, "failed") + stuck:  # stuck: контейнер убивали посреди сборки
+        store.update(db, row["id"], status="queued", error=None, attempts=0)
         print(f"[{row['id']}] возвращён в очередь")
     return 0
 

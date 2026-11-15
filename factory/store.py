@@ -4,6 +4,10 @@ import sqlite3
 
 from . import config
 
+# Сбой чаще всего временный (сеть, лимит API), поэтому упавший ролик повторяется при следующих
+# запусках; после MAX_ATTEMPTS сбоев он остаётся failed и не запирает очередь.
+MAX_ATTEMPTS = 3
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS videos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,6 +28,9 @@ def connect() -> sqlite3.Connection:
     db = sqlite3.connect(config.DATA_DIR / "queue.db")
     db.row_factory = sqlite3.Row
     db.execute(SCHEMA)
+    if "attempts" not in {column["name"] for column in db.execute("PRAGMA table_info(videos)")}:
+        with db:
+            db.execute("ALTER TABLE videos ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
     return db
 
 
@@ -35,6 +42,24 @@ def add(db, topic: str) -> int:
 def by_status(db, status: str, limit: int | None = None) -> list[sqlite3.Row]:
     sql = "SELECT * FROM videos WHERE status = ? ORDER BY id"
     return db.execute(sql + (f" LIMIT {int(limit)}" if limit else ""), (status,)).fetchall()
+
+
+def runnable(db, limit: int | None = None) -> list[sqlite3.Row]:
+    """Очередь и упавшие ролики, у которых ещё остались попытки.
+
+    Попытка засчитывается до сборки (см. cmd_run), поэтому ролик, чей контейнер убили посреди
+    сборки, остаётся queued с израсходованной попыткой и тоже упирается в предел."""
+    sql = "SELECT * FROM videos WHERE status IN ('queued', 'failed') AND attempts < ? ORDER BY id"
+    return db.execute(sql + (f" LIMIT {int(limit)}" if limit else ""), (MAX_ATTEMPTS,)).fetchall()
+
+
+def claim_attempt(db, video_id: int) -> int:
+    """Засчитывает попытку в самой базе, а не по прочитанной ранее строке: два наложившихся
+    запуска run иначе записали бы одно и то же число, и предел пропустил бы лишнюю сборку."""
+    with db:
+        db.execute("UPDATE videos SET attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP "
+                   "WHERE id = ?", (video_id,))
+    return db.execute("SELECT attempts FROM videos WHERE id = ?", (video_id,)).fetchone()[0]
 
 
 def get(db, video_id: int) -> sqlite3.Row | None:
