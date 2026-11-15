@@ -64,6 +64,34 @@ class RetryTest(unittest.TestCase):
         self.assertEqual(seen, [self.first] * store.MAX_ATTEMPTS + [self.second])
         self.assertEqual(self.status(self.first), "failed")
 
+    def test_killed_build_still_counts_as_an_attempt(self):
+        # Railway убивает контейнер (таймаут, память): исключения нет, процесс просто исчезает.
+        class Killed(BaseException):
+            pass
+
+        seen = []
+
+        def killed(row, dry_run):
+            seen.append(row["id"])
+            raise Killed
+
+        with mock.patch.object(cli, "render", side_effect=killed):
+            for _ in range(store.MAX_ATTEMPTS + 1):
+                with self.assertRaises(Killed):
+                    run_once()
+        self.assertEqual(seen, [self.first] * store.MAX_ATTEMPTS + [self.second],
+                         "ролик, который каждый раз убивают, не должен запускаться бесконечно")
+
+        cli.cmd_retry(argparse.Namespace())
+        self.assertEqual(store.get(self.db, self.first)["attempts"], 0, "retry должен вернуть и убитый ролик")
+
+    def test_successful_build_is_not_retried(self):
+        with mock.patch.object(cli, "render", return_value=(mock.Mock(model_dump_json=lambda: "{}"), Path("x.mp4"))), \
+                mock.patch.object(cli.media, "duration", return_value=1.0):
+            run_once()
+        self.assertEqual(self.status(self.first), "rendered")
+        self.assertEqual([r["id"] for r in store.runnable(self.db)], [self.second])
+
     def test_manual_retry_resets_attempts(self):
         with mock.patch.object(cli, "render", side_effect=RuntimeError("x")):
             for _ in range(store.MAX_ATTEMPTS):

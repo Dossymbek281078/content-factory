@@ -74,11 +74,13 @@ def cmd_run(args) -> int:
     failed = 0
     for row in store.runnable(db, args.limit):
         print(f"[{row['id']}] {row['topic']}", flush=True)
+        # Записывается до сборки: если контейнер убьют посреди неё, попытка всё равно учтена.
+        attempts = row["attempts"] + 1
+        store.update(db, row["id"], attempts=attempts)
         try:
             script, final = render(row, args.dry_run)
         except Exception as error:  # один сбойный ролик не должен останавливать очередь
-            attempts = row["attempts"] + 1
-            store.update(db, row["id"], status="failed", error=str(error), attempts=attempts)
+            store.update(db, row["id"], status="failed", error=str(error))
             print(f"  ОШИБКА (попытка {attempts} из {store.MAX_ATTEMPTS}): {error}", file=sys.stderr)
             failed += 1
             continue
@@ -116,13 +118,17 @@ def cmd_add(args) -> int:
 def cmd_list(args) -> int:
     for row in store.everything(store.connect()):
         extra = row["youtube_id"] or row["error"] or row["video_path"] or ""
-        print(f"{row['id']:>4}  {row['status']:<9} {row['topic'][:60]:<60} {extra[:80]}")
+        if row["status"] in ("queued", "failed") and row["attempts"]:
+            stop = " — больше не запускается, см. retry" if row["attempts"] >= store.MAX_ATTEMPTS else ""
+            extra = "; ".join(filter(None, [f"попыток {row['attempts']}/{store.MAX_ATTEMPTS}{stop}", extra]))
+        print(f"{row['id']:>4}  {row['status']:<9} {row['topic'][:60]:<60} {extra[:120]}")
     return 0
 
 
 def cmd_retry(args) -> int:
     db = store.connect()
-    for row in store.by_status(db, "failed"):
+    stuck = [row for row in store.by_status(db, "queued") if row["attempts"] >= store.MAX_ATTEMPTS]
+    for row in store.by_status(db, "failed") + stuck:  # stuck: контейнер убивали посреди сборки
         store.update(db, row["id"], status="queued", error=None, attempts=0)
         print(f"[{row['id']}] возвращён в очередь")
     return 0

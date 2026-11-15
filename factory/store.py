@@ -45,8 +45,11 @@ def by_status(db, status: str, limit: int | None = None) -> list[sqlite3.Row]:
 
 
 def runnable(db, limit: int | None = None) -> list[sqlite3.Row]:
-    """Очередь плюс упавшие ролики, у которых ещё остались попытки."""
-    sql = "SELECT * FROM videos WHERE status = 'queued' OR (status = 'failed' AND attempts < ?) ORDER BY id"
+    """Очередь и упавшие ролики, у которых ещё остались попытки.
+
+    Попытка засчитывается до сборки (см. cmd_run), поэтому ролик, чей контейнер убили посреди
+    сборки, остаётся queued с израсходованной попыткой и тоже упирается в предел."""
+    sql = "SELECT * FROM videos WHERE status IN ('queued', 'failed') AND attempts < ? ORDER BY id"
     return db.execute(sql + (f" LIMIT {int(limit)}" if limit else ""), (MAX_ATTEMPTS,)).fetchall()
 
 
