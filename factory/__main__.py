@@ -75,8 +75,7 @@ def cmd_run(args) -> int:
     for row in store.runnable(db, args.limit):
         print(f"[{row['id']}] {row['topic']}", flush=True)
         # Записывается до сборки: если контейнер убьют посреди неё, попытка всё равно учтена.
-        attempts = row["attempts"] + 1
-        store.update(db, row["id"], attempts=attempts)
+        attempts = store.claim_attempt(db, row["id"])
         try:
             script, final = render(row, args.dry_run)
         except Exception as error:  # один сбойный ролик не должен останавливать очередь

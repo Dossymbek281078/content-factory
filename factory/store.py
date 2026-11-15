@@ -53,6 +53,15 @@ def runnable(db, limit: int | None = None) -> list[sqlite3.Row]:
     return db.execute(sql + (f" LIMIT {int(limit)}" if limit else ""), (MAX_ATTEMPTS,)).fetchall()
 
 
+def claim_attempt(db, video_id: int) -> int:
+    """Засчитывает попытку в самой базе, а не по прочитанной ранее строке: два наложившихся
+    запуска run иначе записали бы одно и то же число, и предел пропустил бы лишнюю сборку."""
+    with db:
+        db.execute("UPDATE videos SET attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP "
+                   "WHERE id = ?", (video_id,))
+    return db.execute("SELECT attempts FROM videos WHERE id = ?", (video_id,)).fetchone()[0]
+
+
 def get(db, video_id: int) -> sqlite3.Row | None:
     return db.execute("SELECT * FROM videos WHERE id = ?", (video_id,)).fetchone()
 

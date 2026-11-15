@@ -100,6 +100,15 @@ class RetryTest(unittest.TestCase):
         row = store.get(self.db, self.first)
         self.assertEqual((row["status"], row["attempts"]), ("queued", 0))
 
+    def test_overlapping_runs_both_count_their_attempt(self):
+        # Два процесса run (например, расписание и ручной запуск) прочитали одну и ту же строку.
+        stale = store.runnable(self.db, 1)[0]
+        other = store.connect()
+        self.addCleanup(other.close)
+        store.claim_attempt(other, stale["id"])
+        self.assertEqual(store.claim_attempt(self.db, stale["id"]), 2)
+        self.assertEqual(store.get(self.db, stale["id"])["attempts"], 2)
+
     def test_old_database_without_attempts_column_is_migrated(self):
         self.db.close()
         path = config.DATA_DIR / "queue.db"
