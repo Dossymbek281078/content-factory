@@ -1,6 +1,8 @@
 """Сценарий: тема -> структурированный сценарий со сценами (Claude)."""
 
+import http.client
 import re
+import urllib.request
 
 import anthropic
 
@@ -17,7 +19,13 @@ invent benchmarks, revenue figures or customer stories: if a number is not given
 topic, describe the mechanism instead of quoting a figure.
 
 Write narration to be spoken aloud: short sentences, no markdown, no emoji, no stage \
-directions. Aim for 8 to 12 scenes of 2 to 4 sentences each, about 4 to 6 minutes in total.
+directions.
+
+Nobody has run this automation, so present it as a design and the steps to build it. Do not claim results, \
+speed, accuracy or guarantees for it ("runs in seconds", "never misses", "posts itself", "verified report", \
+"numbers are never invented"); say instead what the code does and what to measure when the viewer runs it.
+
+Aim for 8 to 12 scenes of 2 to 4 sentences each, about 4 to 6 minutes in total.
 
 Each scene needs a visual prompt for an image model. Describe one concrete, distinct shot \
 per scene (a different subject, angle or setting each time) in a consistent clean, modern, \
@@ -59,6 +67,52 @@ def promised_links(video: VideoScript) -> list[str]:
             for match in pattern.finditer(text)]
 
 
+# Утверждения о результате автоматизации, которую никто не запускал (сверка роликов 3 и 4 15.11).
+OVERCLAIM = re.compile("|".join([
+    # «to never make up» — указание модели, а не утверждение о результате.
+    r"(?<!\bto\s)\bnever\s+(be\s+)?(invent\w*|hallucinat\w*|miss\w*|fail\w*|forget\w*|drop\w*|break\w*"
+    r"|makes?\s+up|made\s+up)\b",
+    r"\bverified,?\s+(and\s+)?cited\b|\bverified\s+(\w+\s+)?(report|numbers|data|output)\b",
+    r"\b(posts|runs|updates|sends|writes|fixes|maintains)\s+itself\b",
+    r"\bguaranteed\b",
+    r"\b100\s?(%|percent\b)\s*(accurate|reliable|correct|automated|of\s+the\s+time)",
+    r"\bzero\s+(errors|mistakes|hallucinations)\b|\berror-free\b|\bflawless(ly)?\b",
+    r"\b(always|perfectly|fully)\s+accurate\b",
+    r"\b(routed|processed|classified|delivered|ready|done|arrives?|lands?|shows?\s+up)(\s+by\s+\w+)?\s+(in|within)\s+"
+    r"(a\s+few\s+)?(seconds|minutes)\b|\binstantly\b",
+    r"\bstays?\s+clean\b",
+]), re.IGNORECASE)
+
+
+def overclaims(video: VideoScript) -> list[str]:
+    texts = [video.title, video.description, video.thumbnail_text, *video.tags,
+             *(scene.narration for scene in video.scenes)]
+    return [match.group(0) for text in texts for match in OVERCLAIM.finditer(text)]
+
+
+def page_is_live(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 content-factory-check"}), timeout=15) as response:
+            return response.status == 200
+    except (OSError, ValueError, http.client.HTTPException):  # оборванный ответ = страница не жива
+        return False
+
+
+def check_promises(video: VideoScript) -> None:
+    """Сценарий, обещающий ссылку, шаблон или код, собирается, только если в описании будет
+    ссылка (PRODUCT_URL) и страница по ней жива. Иначе ролик встанет уже оплаченным."""
+    claims = overclaims(video)
+    if claims:
+        raise RuntimeError(f"сценарий утверждает непроверенный результат: {', '.join(claims)}")
+    promises = promised_links(video)
+    if not promises:
+        return
+    if not config.PRODUCT_URL:
+        raise RuntimeError(f"сценарий обещает ссылку, а PRODUCT_URL не задан: {', '.join(promises)}")
+    if not page_is_live(config.PRODUCT_URL):
+        raise RuntimeError(f"сценарий обещает ссылку, а {config.PRODUCT_URL} не отвечает 200: {', '.join(promises)}")
+
+
 def system_prompt() -> str:
     ending = ENDING_WITH_LINK if config.PRODUCT_URL else ENDING_WITHOUT_LINK
     return SYSTEM.format(channel=config.CHANNEL_NAME, ending=ending)
@@ -87,7 +141,7 @@ def mock_script(topic: str) -> VideoScript:
         f"This video shows how to build {topic} from start to finish.",
         "First we look at the manual process and where the time goes every week.",
         "Then we connect three tools so that the whole thing runs on a schedule.",
-        "Here is the result, what it costs to run, and where to get the template.",
+        "Here is the result, what it costs to run, and what to try next.",
     ]
     return VideoScript(
         title=f"[DRY RUN] {topic}"[:70],

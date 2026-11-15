@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import assemble, config, media, store
 from .models import VideoScript
-from .script import generate_script, mock_script, promised_links
+from .script import check_promises, generate_script, mock_script, promised_links
 
 
 def render(row, dry_run: bool) -> tuple[VideoScript, Path]:
@@ -27,6 +27,18 @@ def render(row, dry_run: bool) -> tuple[VideoScript, Path]:
     else:
         script = mock_script(row["topic"]) if dry_run else generate_script(row["topic"])
         script_file.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+        # Весь текст ролика — в лог: сверять его можно по railway logs, не поднимая контейнер.
+        # В сценарии нет ключей и переменных окружения, только то, что увидит зритель.
+        print("  сценарий:\n" + script.model_dump_json(indent=2), flush=True)
+
+    try:
+        check_promises(script)
+    except RuntimeError:
+        # Сцены ещё не оплачены — сценарий выбрасываем, следующая попытка напишет новый.
+        # Если оплачены, оставляем: новый сценарий разошёлся бы с готовой озвучкой.
+        if not any(work.glob("scene_*")):
+            script_file.unlink()
+        raise
 
     clips, durations = [], []
     for i, scene in enumerate(script.scenes):
@@ -153,6 +165,12 @@ def main() -> int:
     p = sub.add_parser("upload", help="загрузить готовый ролик на YouTube приватным")
     p.add_argument("id", type=int); p.set_defaults(fn=cmd_upload)
     args = parser.parse_args()
+    foreign = config.foreign_railway_project()
+    if foreign and args.fn in (cmd_run, cmd_upload):
+        # Код 0: иначе restart ON_FAILURE перезапустит службу ещё раз.
+        print(f"ПРЕДУПРЕЖДЕНИЕ: проект Railway «{foreign}» не боевой — сборка и загрузка пропущены.",
+              file=sys.stderr, flush=True)
+        return 0
     return args.fn(args)
 
 
