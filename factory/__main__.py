@@ -90,7 +90,14 @@ def cmd_run(args) -> int:
     db = store.connect()
     sync_topics(db)
     failed = 0
-    for row in store.runnable(db, args.limit):
+    rows = store.runnable(db, args.limit)
+    if not rows and not (args.upload and store.by_status(db, "rendered")):
+        # Иначе запуск по расписанию выходит с кодом 0 без единой строки в логе, и день без ролика
+        # никто не замечает.
+        print("ОШИБКА: очередь пуста — нечего собирать и загружать; добавьте темы в topics.txt",
+              file=sys.stderr)
+        return 2
+    for row in rows:
         print(f"[{row['id']}] {row['topic']}", flush=True)
         # Записывается до сборки: если контейнер убьют посреди неё, попытка всё равно учтена.
         attempts = store.claim_attempt(db, row["id"])

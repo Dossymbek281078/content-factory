@@ -5,3 +5,10 @@ Build a daily competitor price tracker with a scheduled script and Supabase
 Auto-generate a weekly customer feedback report from support tickets with Claude
 Classify and route inbound sales leads with Claude before they reach your CRM
 Extract structured data from PDF invoices with Claude and store it in Postgres
+Pull line items from PDF invoices into a Postgres table with Claude
+Draft replies to common customer emails with Claude and send them for human approval
+Summarize a daily Slack channel into a morning digest with Claude
+Turn a product spreadsheet into SEO-ready product descriptions with Claude
+Sort incoming job applications into a shortlist with Claude and a scoring rubric
+Watch a website for changes and get a plain-language summary with Claude
+Turn call transcripts into CRM notes and follow-up tasks with Claude
