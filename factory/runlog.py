@@ -25,13 +25,22 @@ class _Tee:
 
     def write(self, text):
         self._stream.write(text)
-        self._file.write(text)
-        self._file.flush()
+        self._copy(lambda: (self._file.write(text), self._file.flush()))
         return len(text)
 
     def flush(self):
         self._stream.flush()
-        self._file.flush()
+        self._copy(lambda: self._file.flush())
+
+    def _copy(self, action):
+        # Том заполнился посреди прогона: дальше пишем только в консоль, ролик важнее лога.
+        if self._file is None:
+            return
+        try:
+            action()
+        except (OSError, ValueError) as error:
+            self._file = None
+            self._stream.write(f"ПРЕДУПРЕЖДЕНИЕ: запись лога прогона прекращена: {error}\n")
 
     def __getattr__(self, name):
         return getattr(self._stream, name)
@@ -59,33 +68,49 @@ def _on_term(signum, _frame):
     raise SystemExit(128 + signum)
 
 
-def run_logged(fn, args) -> int:
+def _open_log():
     logs = config.DATA_DIR / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     _prune(logs)
     previous = _previous_tail(logs)
-    path =logs / f"run-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.log"
-    with open(path, "a", encoding="utf-8") as file:
-        out, err = sys.stdout, sys.stderr
-        sys.stdout, sys.stderr = _Tee(out, file), _Tee(err, file)
+    path = logs / f"run-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.log"
+    file = open(path, "a", encoding="utf-8")
+    if previous:  # только в консоль: в файле прошлого прогона он и так есть
+        print(previous, flush=True)
+    print(f"лог прогона: {path}", flush=True)
+    return file
+
+
+def run_logged(fn, args) -> int:
+    try:
+        file = _open_log()
+    except OSError as error:
+        print(f"ПРЕДУПРЕЖДЕНИЕ: лог прогона в файл не ведётся: {error}", file=sys.stderr, flush=True)
+        return fn(args)
+    out, err = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = _Tee(out, file), _Tee(err, file)
+    try:
         faulthandler.enable(file=file)
-        old_term = signal.signal(signal.SIGTERM, _on_term)
-        code = 1
+    except (OSError, ValueError, AttributeError):  # у файла нет fileno — без аварийного дампа
+        pass
+    old_term = signal.signal(signal.SIGTERM, _on_term)
+    code = 1
+    try:
+        code = fn(args)
+        return code
+    except SystemExit as stop:
+        code = stop.code if isinstance(stop.code, int) else 1
+        raise
+    except Exception:
+        # Печатаем здесь, а не на верхнем уровне: иначе traceback не попадёт в файл.
+        traceback.print_exc()
+        return code
+    finally:
+        print(f"код выхода {code}", file=sys.stderr, flush=True)
+        signal.signal(signal.SIGTERM, old_term)
+        faulthandler.disable()
+        sys.stdout, sys.stderr = out, err
         try:
-            if previous:
-                print(previous, flush=True)
-            print(f"лог прогона: {path}", flush=True)
-            code = fn(args)
-            return code
-        except SystemExit as stop:
-            code = stop.code if isinstance(stop.code, int) else 1
-            raise
-        except Exception:
-            # Печатаем здесь, а не на верхнем уровне: иначе traceback не попадёт в файл.
-            traceback.print_exc()
-            return code
-        finally:
-            print(f"код выхода {code}", file=sys.stderr, flush=True)
-            signal.signal(signal.SIGTERM, old_term)
-            faulthandler.disable()
-            sys.stdout, sys.stderr = out, err
+            file.close()
+        except OSError:
+            pass

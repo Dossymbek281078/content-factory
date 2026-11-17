@@ -78,6 +78,24 @@ class RunLogTest(unittest.TestCase):
         self.assertIn("MemoryError: ffmpeg", out)
         self.assertNotIn("строка 5\n", out)  # только хвост, не весь файл
 
+    def test_log_dir_failure_does_not_stop_the_run(self):
+        # Том полон или без прав: ролик важнее лога.
+        with mock.patch.object(runlog, "_open_log", side_effect=OSError("No space left on device")):
+            code, out, err = self.call(lambda _: print("сцена 1/1") or 0)
+        self.assertEqual(code, 0)
+        self.assertIn("сцена 1/1", out)
+        self.assertIn("No space left on device", err)
+
+    def test_log_write_failure_mid_run_does_not_stop_the_run(self):
+        class Full(io.StringIO):
+            def write(self, text):
+                raise OSError("No space left on device")
+
+        with mock.patch.object(runlog, "_open_log", return_value=Full()):
+            code, out, _ = self.call(lambda _: print("сцена 1/1") or 0)
+        self.assertEqual(code, 0)
+        self.assertIn("сцена 1/1", out)
+
     def test_old_logs_are_pruned(self):
         logs = self.data / "logs"
         logs.mkdir(parents=True)
