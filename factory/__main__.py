@@ -10,7 +10,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import assemble, config, media, store
+from . import assemble, config, media, runlog, store
 from .models import VideoScript
 from .script import check_promises, generate_script, mock_script, promised_links
 
@@ -178,6 +178,8 @@ def main() -> int:
         print(f"ПРЕДУПРЕЖДЕНИЕ: проект Railway «{foreign}» не боевой — сборка и загрузка пропущены.",
               file=sys.stderr, flush=True)
         return 0
+    if args.fn in (cmd_run, cmd_upload):
+        return runlog.run_logged(args.fn, args)
     return args.fn(args)
 
 
