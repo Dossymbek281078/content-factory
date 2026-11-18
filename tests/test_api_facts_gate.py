@@ -61,6 +61,21 @@ class ApiFactsGateTest(unittest.TestCase):
             with self.subTest(text=text):
                 script.check_promises(make(text))
 
+    def test_warning_against_wrong_advice_passes(self):
+        """Прогон 17.11 14:01Z упал на верном совете: ведущий как раз предупреждал не принуждать tool choice."""
+        for text in ["If you prefer tools, define the tool with strict set to true, but do not force it with "
+                     "tool choice, because Opus 5.5, Sonnet 5.5 and Fable 5.2 reject that with a 400 error.",
+                     "Don't set temperature on Sonnet 5.5.", "Never use tool_choice any here.",
+                     "Avoid forcing the model to call a tool."]:
+            with self.subTest(text=text):
+                script.check_promises(make(text))
+
+    def test_wrong_advice_after_a_warning_still_stops_build(self):
+        for text in ["Do not guess the fields, set tool choice to force that tool.",
+                     "Never skip validation; use tool_choice any."]:
+            with self.subTest(text=text), self.assertRaises(RuntimeError):
+                script.check_promises(make(text))
+
     def test_negated_objects_in_visual_pass(self):
         script.check_promises(make("Parse the reply in code.",
                                    "A brass desk lamp on an empty oak desk, warm light, no text, no screens, no paper"))

@@ -129,12 +129,16 @@ TEXTY_VISUAL = re.compile(
     r"terminal|ledger|tablet|phone)\b", re.IGNORECASE)
 # «no text, no screens», «without paper» — запрет в подсказке, а не предмет в кадре.
 NEGATED = re.compile(r"\b(no|without|not|never|avoid)\b[^,.;]*$", re.IGNORECASE)
+# Отрицание в той же части фразы перед советом: «do not / don't / never / avoid ...».
+WARNED = re.compile(r"\b(not|don't|dont|never|avoid|avoiding)\b[^,.;]*$", re.IGNORECASE)
 
 
 def api_errors(video: VideoScript) -> list[str]:
     texts = [video.title, video.description, video.thumbnail_text,
              *(scene.narration for scene in video.scenes)]
-    return [match.group(0) for text in texts for match in API_ERROR.finditer(text)]
+    # «do not force it with tool choice» — верное предупреждение, а не совет (прогон 17.11 14:01Z).
+    return [match.group(0) for text in texts for match in API_ERROR.finditer(text)
+            if not WARNED.search(text[:match.start()])]
 
 
 def texty_visuals(video: VideoScript) -> list[str]:
